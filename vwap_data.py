@@ -15,17 +15,7 @@ SHEET_ID = os.environ.get("SHEET_ID")           # GitHub Secret for Google Sheet
 UPDATE_INTERVAL = 60                            # seconds refresh interval
 
 # -------------------- NIFTY50 SYMBOLS --------------------
-nifty50_map = {
-    "Reliance": "RI",
-    "TCS": "TCS",
-    "HDFC Bank": "HDF01",
-    "Bharti Airtel": "BTV",
-    "ICICI Bank": "ICI02",
-    "Infosys": "IT",
-    "SBI": "SBI",
-    "HUL": "HL",
-    "Bajaj Finance": "BAF",
-    "ITC": "ITC",
+nifty50_map = {    
     "HCL Tech": "HCL02",
     "Larsen": "LT",
     "Sun Pharma": "SPI",
@@ -35,37 +25,7 @@ nifty50_map = {
     "UltraTech Cement": "UTC",
     "Wipro": "W",
     "NTPC": "NTP",
-    "Axis Bank": "UTI10",
-    "ONGC": "ONG",
-    "Bajaj Finserv": "BF04",
-    "Titan Company": "TI01",
-    "Tata Motors": "TEL",
-    "Adani Enterprises": "AE01",
-    "Power Grid": "PGC",
-    "JSW Steel": "JVS",
-    "Bajaj Auto": "BA06",
-    "Adani Ports": "MPS",
-    "Coal India": "CI29",
-    "Asian Paints": "API",
-    "Nestle": "NI",
-    "Bharat Elec": "BE03",
-    "Trent": "L",
-    "Tata Steel": "TIS",
-    "Grasim": "GI01",
-    "Tech Mahindra": "TM4",
-    "SBI Life": "SLI03",
-    "Hindalco": "H",
-    "Eicher Motors": "EM",
-    "HDFC Life": "HSL01",
-    "Cipla": "C",
-    "Britannia": "BI",
-    "Shriram Finance": "STF",
-    "BPCL": "BPC",
-    "Tata Consumer": "TT",
-    "Dr Reddys": "DRL",
-    "Apollo Hospital": "AHE",
-    "IndusInd Bank": "IIB",
-    "Hero Motocorp": "HHM"
+    "Axis Bank": "UTI10"    
     }
 
 # -------------------- API ENDPOINTS --------------------
