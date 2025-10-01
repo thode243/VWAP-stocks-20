@@ -13,7 +13,7 @@ import time
 SERVICE_ACCOUNT_FILE = "service_account.json"   # service account JSON file (added via GitHub Actions)
 SHEET_ID = os.environ.get("SHEET_ID")           # GitHub Secret for Google Sheet ID
 UPDATE_INTERVAL = 60                            # seconds refresh interval
-START_ROW = int(os.environ.get("START_ROW", "12"))  # Repo2 writes from row-12
+START_ROW = int(os.environ.get("START_ROW", "2"))  # Repo2 writes from row-2
 
 # -------------------- NIFTY50 SYMBOLS --------------------
 nifty50_map = {    
@@ -45,7 +45,7 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_FILE, scope)
 client = gspread.authorize(creds)
 # sheet = client.open_by_key(SHEET_ID).sheet1
-sheet = client.open("NSE data").worksheet("Nifty50VWAP")
+sheet = client.open("NSE data").worksheet("Nifty50VWAP20")
 
 # Write headers if sheet is empty
 if len(sheet.get_all_values()) == 0:
