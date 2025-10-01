@@ -98,7 +98,7 @@ while True:
     df = pd.DataFrame(results)
     print(df.head())
 
-# Overwrite old data in assigned block (rows 12–21 for Repo2)
+# Overwrite old data in assigned block (rows 2–11 for Repo2)
     set_with_dataframe(
         sheet,
         df,
