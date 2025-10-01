@@ -13,6 +13,7 @@ import time
 SERVICE_ACCOUNT_FILE = "service_account.json"   # service account JSON file (added via GitHub Actions)
 SHEET_ID = os.environ.get("SHEET_ID")           # GitHub Secret for Google Sheet ID
 UPDATE_INTERVAL = 60                            # seconds refresh interval
+START_ROW = int(os.environ.get("START_ROW", "12"))  # Repo2 writes from row-12
 
 # -------------------- NIFTY50 SYMBOLS --------------------
 nifty50_map = {    
@@ -97,14 +98,14 @@ while True:
     df = pd.DataFrame(results)
     print(df.head())
 
-# Overwrite old data (starting row=2, below headers)
+# Overwrite old data in assigned block (rows 12–21 for Repo2)
     set_with_dataframe(
-    sheet,
-    df,
-    row=2,                     # always start at row 2
-    include_index=False,
-    include_column_header=False
-)
+        sheet,
+        df,
+        row=START_ROW,
+        include_index=False,
+        include_column_header=False
+    )
 
     print(f"[{timestamp}] ✅ Data refreshed in Google Sheet (overwritten old data)")
     time.sleep(UPDATE_INTERVAL)
