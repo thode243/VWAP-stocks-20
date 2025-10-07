@@ -1,8 +1,9 @@
-requests
 pandas
+beautifulsoup4
 gspread
-gspread_dataframe
 oauth2client
-urllib3
-pytz
+requests
 lxml
+pytz
+streamlit
+plotly
