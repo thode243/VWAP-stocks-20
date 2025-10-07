@@ -103,7 +103,7 @@ jobs:
               print("📉 Market is closed, exiting workflow.")
               sys.exit(0)
           EOF
-          python nse_data.py
+          python NSE_Option_Chainonline.py
 
       - name: Upload logs
         if: always()
