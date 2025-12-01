@@ -12,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-#
+
 # ===== CONFIG =====
 SHEET_ID = os.getenv(
     "SHEET_ID",
