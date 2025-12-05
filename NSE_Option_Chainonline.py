@@ -167,22 +167,18 @@ def fetch_option_chain():
                     ce = entry.get("CE", {})
                     pe = entry.get("PE", {})
 
-                      row = {
-    "CE OI": ce.get("openInterest", 0),
-    "CE Chng OI": ce.get("changeinOpenInterest", 0),
-    "CE LTP": ce.get("lastPrice", 0),
-    "CE Volume": ce.get("totalTradedVolume", 0),
-
-    "Strike Price": strike,
-    "Expiry Date": expiry,
-
-    "PE LTP": pe.get("lastPrice", 0),
-    "PE Chng OI": pe.get("changeinOpenInterest", 0),
-    "PE OI": pe.get("openInterest", 0),
-    "PE Volume": pe.get("totalTradedVolume", 0),
-}
-
-
+            row = {
+                    "CE OI": ce.get("openInterest", 0),
+                    "CE Chng OI": ce.get("changeinOpenInterest", 0),
+                    "CE LTP": ce.get("lastPrice", 0),
+                    "CE Volume": ce.get("totalTradedVolume", 0),                
+                    "Strike Price": strike,
+                    "Expiry Date": expiry,                
+                    "PE LTP": pe.get("lastPrice", 0),
+                    "PE Chng OI": pe.get("changeinOpenInterest", 0),
+                    "PE OI": pe.get("openInterest", 0),
+                    "PE Volume": pe.get("totalTradedVolume", 0),
+                }
                     if expiry not in expiry_dfs:
                         expiry_dfs[expiry] = []
                     expiry_dfs[expiry].append(row)
