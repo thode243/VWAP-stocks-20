@@ -179,9 +179,10 @@ def fetch_option_chain():
                     "PE OI": pe.get("openInterest", 0),
                     "PE Volume": pe.get("totalTradedVolume", 0),
                 }
-                    if expiry not in expiry_dfs:
-                        expiry_dfs[expiry] = []
-                    expiry_dfs[expiry].append(row)
+                if expiry not in expiry_dfs:
+                    expiry_dfs[expiry] = []
+                    
+                expiry_dfs[expiry].append(row)
 
             # Assign to sheets
             for config in SHEET_CONFIG:
