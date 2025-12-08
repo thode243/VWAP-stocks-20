@@ -7,17 +7,22 @@ import pandas as pd
 import gspread
 from datetime import datetime, time as dtime
 from oauth2client.service_account import ServiceAccountCredentials
-from unofficed import NseIndia  # This is the only thing that works reliably in Dec 2025
+from nsepython import nse_optionchain  # Correct import for NSE data (works in Dec 2025)
 
 # ========================= CONFIG =========================
 SHEET_ID = os.getenv("SHEET_ID")
+if not SHEET_ID:
+    raise ValueError("SHEET_ID environment variable is required")
+
 CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "service_account.json")
+if not os.path.exists(CREDENTIALS_PATH):
+    raise FileNotFoundError(f"Credentials file not found: {CREDENTIALS_PATH}")
 
 SHEET_CONFIG = [
-    {"sheet_name": "Weekly",    "expiry_index": 0},  # Current weekly expiry
+    {"sheet_name": "Weekly",     "expiry_index": 0},  # Current weekly expiry
     {"sheet_name": "NextWeek",   "expiry_index": 1},
-    {"sheet_name": "Monthly",   "expiry_index": 2},
-    {"sheet_name": "NextMonth", "expiry_index": 3},
+    {"sheet_name": "Monthly",    "expiry_index": 2},
+    {"sheet_name": "NextMonth",  "expiry_index": 3},
 ]
 
 # ========================= LOGGING =========================
@@ -31,20 +36,20 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ========================= NSE (unofficed = zero blocks) =========================
-nse = NseIndia()
-
 # ========================= HELPERS =========================
 def is_market_open():
     ist = pytz.timezone("Asia/Kolkata")
     now = datetime.now(ist)
-    if now.weekday() >= 5:           # Saturday or Sunday
+    if now.weekday() >= 5:  # Saturday or Sunday
         return False
-    return dtime(9, 15) <= now.time() <= dtime(18, 30)
+    t = now.time()
+    return dtime(9, 15) <= t <= dtime(18, 30)
 
 def fetch_nifty_chain():
     try:
-        data = nse.option_chain("NIFTY")
+        data = nse_optionchain("NIFTY")  # Fetches full chain – handles all NSE blocks automatically
+        if not data or "records" not in data or "data" not in data["records"]:
+            raise ValueError("Invalid data structure from NSE")
         log.info(f"Fetched NIFTY option chain – {len(data['records']['data'])} records")
         return data
     except Exception as e:
@@ -71,6 +76,9 @@ def build_df(expiry_date, raw_data):
             "PE Volume":  pe.get("totalTradedVolume", 0),
         })
     df = pd.DataFrame(rows)
+    if df.empty:
+        log.warning(f"No rows found for expiry: {expiry_date}")
+        return df
     return df.sort_values("Strike").reset_index(drop=True)
 
 def update_sheets(dfs):
@@ -79,39 +87,44 @@ def update_sheets(dfs):
     client = gspread.authorize(creds)
     book = client.open_by_key(SHEET_ID)
 
+    # Ensure all sheets exist
+    existing_sheets = {ws.title for ws in book.worksheets()}
+    for cfg in SHEET_CONFIG:
+        if cfg["sheet_name"] not in existing_sheets:
+            book.add_worksheet(title=cfg["sheet_name"], rows=1000, cols=20)
+            log.info(f"Created new sheet: {cfg['sheet_name']}")
+
     for cfg in SHEET_CONFIG:
         name = cfg["sheet_name"]
         df = dfs.get(name)
         if df is None or df.empty:
-            log.warning(f"No data for {name}")
+            log.warning(f"No data for {name} – skipping")
             continue
 
-        try:
-            sheet = book.worksheet(name)
-        except gspread.WorksheetNotFound:
-            sheet = book.add_worksheet(title=name, rows=1000, cols=20)
-
+        sheet = book.worksheet(name)
         sheet.clear()
-        sheet.update("A1", [df.columns.tolist()] + df.values.tolist())
-        log.info(f"Updated {name} → {len(df)} strikes")
+        data_to_upload = [df.columns.tolist()] + df.values.tolist()
+        sheet.update("A1", data_to_upload)
+        log.info(f"Updated {name} → {len(df)} strikes at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S IST')}")
 
 # ========================= MAIN =========================
 if __name__ == "__main__":
-    log.info("NIFTY Option Chain → Google Sheets – Starting")
+    log.info("NIFTY Option Chain → Google Sheets – Starting (nsepython 2.97)")
 
     if not is_market_open():
-        log.info("Market is closed → exiting")
+        log.info("Market is closed → exiting without update")
         sys.exit(0)
 
     try:
         raw_data = fetch_nifty_chain()
         expiries = raw_data["records"]["expiryDates"]
+        log.info(f"Available expiries: {expiries}")
 
         dfs_to_upload = {}
         for cfg in SHEET_CONFIG:
             idx = cfg["expiry_index"]
             if idx >= len(expiries):
-                log.warning(f"Expiry index {idx} not available")
+                log.warning(f"Expiry index {idx} out of range (only {len(expiries)} available)")
                 continue
             expiry = expiries[idx]
             df = build_df(expiry, raw_data)
@@ -119,8 +132,8 @@ if __name__ == "__main__":
             log.info(f"Prepared {cfg['sheet_name']} → {expiry} ({len(df)} rows)")
 
         update_sheets(dfs_to_upload)
-        log.info("All sheets updated successfully!")
+        log.info("✅ All sheets updated successfully!")
 
     except Exception as e:
-        log.error(f"Script crashed: {e}", exc_info=True)
+        log.error(f"❌ Script failed: {e}", exc_info=True)
         sys.exit(1)
