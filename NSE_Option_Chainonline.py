@@ -79,52 +79,56 @@ logger.addHandler(UnicodeSafeStreamHandler(stream=sys.stdout))
 
 def create_session():
     session = requests.Session()
-    retries = Retry(
-        total=3,
-        backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504],
-    )
-    session.mount("https://", HTTPAdapter(max_retries=retries))
 
-    try:
-        s = session.get(f"{BASE_URL}/option-chain", headers=HEADERS, timeout=10)
-        s.raise_for_status()
-    except requests.RequestException as e:
-        logger.error(f"Failed to fetch cookies: {e}")
-        raise
+    # Mandatory browser headers
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/130.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.nseindia.com/option-chain",
+        "Connection": "keep-alive",
+        "Origin": "https://www.nseindia.com"
+    })
+
+    # Request homepage to load cookies
+    home = session.get("https://www.nseindia.com", timeout=10)
+    if home.status_code != 200:
+        raise Exception("Unable to load NSE homepage for cookies")
+
+    # Request the OC page to generate cookies
+    oc = session.get("https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY",
+                     timeout=10)
+    if oc.status_code != 200:
+        raise Exception("NSE option-chain API blocked")
 
     return session
 
 
+
 def get_latest_expiries(session, index, num_expiries=4):
-    try:
-        url = OPTION_CHAIN_URL.format(index=index)
-        r = session.get(url, headers=HEADERS, timeout=10)
-        r.raise_for_status()
+    url = f"https://www.nseindia.com/api/option-chain-indices?symbol={index}"
+    
+    r = session.get(url, timeout=10)
+    if r.status_code != 200:
+        raise Exception("NSE returned no option-chain data")
 
-        data = r.json()
-        expiries = data.get("records", {}).get("expiryDates", [])
-        if not expiries:
-            raise ValueError(f"No expiry dates for {index}")
+    data = r.json()
 
-        ist = pytz.timezone("Asia/Kolkata")
-        today = datetime.now(ist).date()
+    expiries = data.get("records", {}).get("expiryDates", [])
+    if not expiries:
+        raise Exception(f"No expiry dates returned for {index}")
 
-        parsed = []
-        for exp in expiries:
-            try:
-                d = datetime.strptime(exp, "%d-%b-%Y").date()
-                if d >= today:
-                    parsed.append((d, exp))
-            except:
-                pass
+    # Sort expiries to closest first
+    def parse_date(d):
+        return datetime.strptime(d, "%d-%b-%Y")
 
-        parsed.sort(key=lambda x: x[0])
-        return [e[1] for e in parsed[:num_expiries]]
+    expiries_sorted = sorted(expiries, key=parse_date)
+    return expiries_sorted[:num_expiries]
 
-    except Exception as e:
-        logger.error(f"Failed expiry fetch for {index}: {e}")
-        raise
 
 
 def fetch_option_chain():
