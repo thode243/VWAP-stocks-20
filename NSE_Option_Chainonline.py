@@ -40,7 +40,7 @@ def is_market_open():
     now = datetime.now(ist)
     if now.weekday() >= 5:           # Saturday or Sunday
         return False
-    return dtime(9, 15) <= now.time() <= dtime(15, 30)
+    return dtime(9, 15) <= now.time() <= dtime(18, 30)
 
 def fetch_nifty_chain():
     try:
