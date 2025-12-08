@@ -2,7 +2,7 @@ name: Nifty Option Chain Update
 
 on:
   schedule:
-    - cron: '*/2 3-9 * * 1-5'   # Every 2 minutes during market hours (IST: 9:15 AM - 3:30 PM)
+    - cron: '*/2 3-12 * * 1-5'   # Every 2 minutes during market hours (IST: 9:15 AM - 3:30 PM)
   workflow_dispatch:
 
 jobs:
