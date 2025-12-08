@@ -13,7 +13,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 
-# ===== CONFIG ====
+# ===== CONFIG =====
 SHEET_ID = os.getenv(
     "SHEET_ID",
     "17YLthNpsymBOeDkBbRkb3eC8A3KZnKTXz4cSAGScx88"
