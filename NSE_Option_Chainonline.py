@@ -44,7 +44,7 @@ def is_market_open():
     if now.weekday() >= 5:
         return False
     t = now.time()
-    return dtime(9, 15) <= t <= dtime(15, 30)
+    return dtime(9, 15) <= t <= dtime(18, 30)
 
 def fetch_nifty_chain():
     """Use Playwright to load page, execute JS, and fetch API JSON (bypasses all blocks)."""
