@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def fetch_option_chain(index):
     """Fetch option chain using NSELIB (NO NSE WEBSITE REQUESTS)."""
     try:
-        data = get_option_chain(index)
+        data = nse_optionchain_scrape("NIFTY")
         return data
     except Exception as e:
         logger.error(f"Failed to fetch option chain for {index}: {e}")
