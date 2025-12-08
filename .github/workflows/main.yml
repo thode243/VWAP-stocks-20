@@ -1,73 +1,19 @@
-name: Nifty Option data 
+name: Nifty Option Chain → Google Sheets
 
 on:
-  push:
-    branches:
-      - main
   schedule:
-    - cron: "*/1 3-11 * * 1-5"   # Every minute 09:00–15:29 IST, Mon–Fri
-    - cron: "0 10 * * 1-5"      # At 15:30 IST exact
+    - cron: "*/2 3-12 * * 1-5"   # Every 2 minutes from 9:15 AM to 3:30 PM IST
   workflow_dispatch:
-    inputs:
-      run_code2:
-        description: "Run experimental Code2 instead of Code1?"
-        required: false
-        default: "false"
 
 jobs:
-  code1:
-    if: ${{ github.event.inputs.run_code2 != 'true' }}
+  update:
     runs-on: ubuntu-latest
     concurrency:
-      group: nifty-update
+      group: nifty-live-update
       cancel-in-progress: true
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      
-      - name: Install dependencies
-        run: |
-          pip install --no-cache-dir --upgrade pip
-          pip install --no-cache-dir nselib==1.4.0
-          pip install --no-cache-dir pandas_market_calendars
-          pip install --no-cache-dir pandas gspread oauth2client pytz requests
-
-
-      - name: Set up Google credentials
-        run: |
-          echo "${GOOGLE_CREDENTIALS}" > "$GITHUB_WORKSPACE/service_account.json"
-          test -s "$GITHUB_WORKSPACE/service_account.json" || { echo "❌ Credentials file is empty"; exit 1; }
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-
-      - name: Run update script (Code1)
-        env:
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-          POLLING_INTERVAL: 60
-          GOOGLE_CREDENTIALS_PATH: ${{ github.workspace }}/service_account.json
-        run: python NSE_Option_Chainonline.py
-
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: script-logs
-          path: option_chain_updater1.log
-
-  code2:
-    if: ${{ github.event.inputs.run_code2 == 'true' }}
-    runs-on: ubuntu-latest
-    concurrency:
-      group: nifty-update
-      cancel-in-progress: true
-    steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -77,39 +23,23 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
-          
+          pip install --upgrade pip
+          pip install -r requirements.txt --no-cache-dir
 
-      - name: Set up Google credentials
+      - name: Save Google credentials
         run: |
-          echo "${GOOGLE_CREDENTIALS}" > "$GITHUB_WORKSPACE/service_account.json"
-          test -s "$GITHUB_WORKSPACE/service_account.json" || { echo "❌ Credentials file is empty"; exit 1; }
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > service_account.json
+          ls -la service_account.json
 
-      - name: Run update script (Code2 with market check)
+      - name: Run Nifty updater
         env:
           SHEET_ID: ${{ secrets.SHEET_ID }}
-          POLLING_INTERVAL: 60
           GOOGLE_CREDENTIALS_PATH: ${{ github.workspace }}/service_account.json
-        run: |
-          echo "⏰ Checking if market is open..."
-          python - <<'EOF'
-          import datetime, pytz, sys
-          ist = pytz.timezone("Asia/Kolkata")
-          now = datetime.datetime.now(ist).time()
-          market_open = datetime.time(9, 10)
-          market_close = datetime.time(15, 30)
-          if not (market_open <= now <= market_close):
-              print("📉 Market is closed, exiting workflow.")
-              sys.exit(0)
-          EOF
-          python NSE_Option_Chainonline.py
+        run: python nifty_option_chain.py
 
-      - name: Upload logs
+      - name: Upload log (debug)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: script-logs
-          path: option_chain_updater1.log
+          name: nifty-logs
+          path: option_chain.log
