@@ -9,7 +9,7 @@ from datetime import datetime, time as dtime
 from oauth2client.service_account import ServiceAccountCredentials
 from unofficed import NseIndia  # This bypasses all NSE blocks forever
 
-# ========================= CONFIG =========================
+# ========================= CONFIG ========================
 SHEET_ID = os.getenv("SHEET_ID")
 CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "service_account.json")
 
