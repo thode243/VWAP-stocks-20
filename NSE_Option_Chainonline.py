@@ -24,7 +24,7 @@ SHEET_CONFIG = [
     {"sheet_name": "Sheet2", "index": "NIFTY", "expiry_index": 1},
     {"sheet_name": "Sheet3", "index": "NIFTY", "expiry_index": 2},
     {"sheet_name": "Sheet4", "index": "NIFTY", "expiry_index": 3},
-    {"sheet_name": "Sheet5", "index": "BANKNIFTY", "expiry_index": None},
+    {"sheet_name": "Sheet5", "index": "BANKNIFTY", "expiry_index": None}
 ]
 
 POLLING_INTERVAL_SECONDS = int(os.getenv("POLLING_INTERVAL", 30))
