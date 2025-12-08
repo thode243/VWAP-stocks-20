@@ -80,32 +80,54 @@ logger.addHandler(UnicodeSafeStreamHandler(stream=sys.stdout))
 def create_session():
     session = requests.Session()
 
-    # Mandatory browser headers
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/130.0.0.0 Safari/537.36"
-        ),
-        "Accept": "application/json, text/plain, */*",
+    USER_AGENTS = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+        "(KHTML, like Gecko) Version/15.5 Safari/605.1.15"
+    ]
+
+    import random
+    ua = random.choice(USER_AGENTS)
+
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
         "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.nseindia.com/option-chain",
         "Connection": "keep-alive",
-        "Origin": "https://www.nseindia.com"
-    })
+        "Host": "www.nseindia.com",
+        "Referer": "https://www.nseindia.com/option-chain",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+    }
 
-    # Request homepage to load cookies
-    home = session.get("https://www.nseindia.com", timeout=10)
-    if home.status_code != 200:
-        raise Exception("Unable to load NSE homepage for cookies")
+    session.headers.update(headers)
 
-    # Request the OC page to generate cookies
-    oc = session.get("https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY",
-                     timeout=10)
-    if oc.status_code != 200:
-        raise Exception("NSE option-chain API blocked")
+    # --- very important retries ---
+    retries = Retry(
+        total=5,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504]
+    )
+    session.mount("https://", HTTPAdapter(max_retries=retries))
 
-    return session
+    # ---- try homepage 5 times ----
+    for _ in range(5):
+        try:
+            r = session.get("https://www.nseindia.com", timeout=10)
+            if r.status_code == 200:
+                return session
+        except:
+            pass
+        sleep(1)
+
+    raise Exception("Unable to load NSE homepage even after retries")
+
 
 
 
