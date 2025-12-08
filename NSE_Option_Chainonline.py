@@ -7,7 +7,7 @@ import pandas as pd
 from time import sleep
 from datetime import datetime, time as dtime
 from oauth2client.service_account import ServiceAccountCredentials
-from nselib.derivatives import get_option_chain
+from nselib.derivatives import nse_optionchain_scrape
 
 
 # ========= CONFIG ========
