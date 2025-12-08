@@ -2,44 +2,48 @@ name: Nifty Option Chain → Google Sheets
 
 on:
   schedule:
-    - cron: "*/2 3-12 * * 1-5"   # Every 2 minutes from 9:15 AM to 3:30 PM IST
+    - cron: '*/2 3-10 * * 1-5'  # Every 2 min, 9:15-15:30 IST
   workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
     concurrency:
-      group: nifty-live-update
+      group: nifty-chain-update
       cancel-in-progress: true
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt --no-cache-dir
+          pip install --no-cache-dir -r requirements.txt
 
-      - name: Save Google credentials
+      - name: Install Playwright Browsers
+        run: |
+          playwright install-deps
+          playwright install chromium
+
+      - name: Setup Credentials
         run: |
           echo '${{ secrets.GOOGLE_CREDENTIALS }}' > service_account.json
-          ls -la service_account.json
+          [ -s service_account.json ] || exit 1
 
-      - name: Run Nifty updater
+      - name: Run Updater
         env:
           SHEET_ID: ${{ secrets.SHEET_ID }}
           GOOGLE_CREDENTIALS_PATH: ${{ github.workspace }}/service_account.json
-        run: python nifty_option_chain.py
+        run: python NSE_Option_Chainonline.py
 
-      - name: Upload log (debug)
+      - name: Upload Logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nifty-logs
+          name: nifty-logs-dec2025
           path: option_chain.log
