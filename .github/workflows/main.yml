@@ -35,9 +35,9 @@ jobs:
         run: |
           pip install --no-cache-dir --upgrade pip
           pip install --no-cache-dir nselib==1.4.0
-          pip install --no-cache-dir pandas gspread oauth2client pytz requests pandas_market_calendars
+          pip install --no-cache-dir pandas_market_calendars
+          pip install --no-cache-dir pandas gspread oauth2client pytz requests
 
-        
 
       - name: Set up Google credentials
         run: |
