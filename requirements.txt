@@ -3,5 +3,5 @@ pandas_market_calendars
 gspread
 oauth2client
 pytz
-nselib
 requests
+nselib==1.4.0
