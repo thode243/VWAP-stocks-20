@@ -1,153 +1,107 @@
-import requests
+# File: nse_option_chain_live_working_dec2025.py
+
 import pandas as pd
 import gspread
-import os
-from time import sleep
-from datetime import datetime, time as dtime
-import pytz
-import logging
-import sys
 from oauth2client.service_account import ServiceAccountCredentials
+import undetected_chromedriver as uc
+import time
+import json
+import logging
+from datetime import datetime
+import pytz
+import os
 
-# Try cloudscraper first, fall back to requests if not available
-try:
-    import cloudscraper
-    scraper = cloudscraper.create_scraper(
-        browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False},
-        delay=10
-    )
-    USE_CLOUDSCRAPER = True
-    logging.info("Using cloudscraper for bypassing Cloudflare")
-except ImportError:
-    import requests
-    USE_CLOUDSCRAPER = False
-    logging.warning("cloudscraper not installed. Falling back to requests (may fail with 403)")
+# ========================= CONFIG =========================
+SHEET_ID = "17YLthNpsymBOeDkBbRkb3eC8A3KZnKTXz4cSAGScx88"
+CREDENTIALS_PATH = r"C:\Users\user\Desktop\GoogleSheetsUpdater\online-fetching-71bca82ecbf5.json"  # Add .json !!
 
-# ===== CONFIG =====
-SHEET_ID = os.getenv("SHEET_ID", "15pghBDGQ34qSMI2xXukTYD4dzG2cOYIYmXfCtb-X5ow")
 SHEET_CONFIG = [
-    {"sheet_name": "Sheet1", "index": "NIFTY", "expiry_index": 0},     # Weekly
-    {"sheet_name": "Sheet2", "index": "NIFTY", "expiry_index": 1},     # Next weekly
-    {"sheet_name": "Sheet3", "index": "NIFTY", "expiry_index": 2},     # Monthly
-    {"sheet_name": "Sheet4", "index": "NIFTY", "expiry_index": 3},     # Next monthly
-    {"sheet_name": "Sheet5", "index": "BANKNIFTY", "expiry_index": 0},
-    # Add more as needed
+    {"sheet": "Sheet1", "symbol": "NIFTY",     "expiry_index": 0},   # Today/This Week → 09-Dec-2025
+    {"sheet": "Sheet2", "symbol": "NIFTY",     "expiry_index": 1},   # Next Week
+    {"sheet": "Sheet3", "symbol": "NIFTY",     "expiry_index": 2},   # Monthly
+    {"sheet": "Sheet4", "symbol": "NIFTY",     "expiry_index": 3},   # Next Monthly
+    {"sheet": "Sheet5", "symbol": "BANKNIFTY", "expiry_index": 0},
 ]
 
-POLLING_INTERVAL_SECONDS = int(os.getenv("POLLING_INTERVAL", 30))
-CREDENTIALS_PATH = os.getenv(
-    "GOOGLE_CREDENTIALS_PATH",
-    r"C:\Users\user\Desktop\GoogleSheetsUpdater\online-fetching-71bca82ecbf5.json"  # Add .json!
-)
+POLLING_INTERVAL = 30
+# =========================================================
 
-BASE_URL = "https://www.nseindia.com"
-OPTION_CHAIN_URL = BASE_URL + "/api/option-chain-indices?symbol={index}"
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s")
+logger = logging.getLogger()
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Referer": BASE_URL + "/option-chain",
-    "X-Requested-With": "XMLHttpRequest",
-    "Connection": "keep-alive",
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-origin",
-}
+def get_driver():
+    options = uc.ChromeOptions()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins")
+    driver = uc.Chrome(options=options, version_main=131)  # Force latest Chrome
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": "Object.defineProperty(navigator, 'webdriver', {get: () => false})"
+    })
+    return driver
 
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("option_chain_updater.log", encoding="utf-8")
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# ===== SESSION SETUP =====
-def create_session():
-    if USE_CLOUDSCRAPER:
-        session = scraper
-    else:
-        session = requests.Session()
-        retries = requests.adapters.HTTPAdapter(max_retries=3)
-        session.mount("https://", retries)
-
-    session.headers.update(HEADERS)
-
+def fetch_nse_data(symbol="NIFTY"):
+    driver = get_driver()
     try:
-        # Warm up session + get cookies
-        resp = session.get(BASE_URL, timeout=15)
-        resp = session.get(BASE_URL, timeout=15)
-        resp = session.get(BASE_URL + "/option-chain", timeout=15)
-        logger.info(f"Session initialized. Cookies: {list(session.cookies.keys())}")
+        driver.get("https://www.nseindia.com/option-chain")
+        time.sleep(6)
+
+        # Select Index
+        driver.execute_script(f"""
+            document.querySelector('#underlyingSelect').value = '{symbol}';
+            document.querySelector('#underlyingSelect').dispatchEvent(new Event('change'));
+        """)
+        time.sleep(3)
+
+        # Get all expiry dates
+        expiries = driver.execute_script("""
+            return Array.from(document.querySelectorAll('#expirySelect option'))
+                 .map(opt => opt.textContent.trim());
+        """)
+
+        # Trigger data load
+        driver.execute_script("getOptionChainData();")
+        time.sleep(5)
+
+        # Extract full JSON from page
+        data = driver.execute_script("return window.optionChainData || null;")
+        if not data:
+            # Fallback: extract from page source
+            page = driver.page_source
+            start = page.find('{"records"')
+            end = page.find('}];', start) + 2
+            raw = page[start:end]
+            data = json.loads(raw)
+
+        return data["records"]["data"], expiries
+
     except Exception as e:
-        logger.error(f"Failed to initialize session: {e}")
-        raise
-    return session
+        logger.error(f"Error fetching {symbol}: {e}")
+        return [], []
+    finally:
+        driver.quit()
 
-# ===== FETCH EXPIRIES =====
-def get_expiries(session, index="NIFTY", count=4):
-    try:
-        url = OPTION_CHAIN_URL.format(index=index)
-        resp = session.get(url, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
+def update_sheets():
+    all_dfs = {}
+    for config in SHEET_CONFIG:
+        symbol = config["symbol"]
+        sheet_name = config["sheet"]
+        exp_idx = config["expiry_index"]
 
-        expiries = data["records"]["expiryDates"]
-        today = datetime.now(pytz.timezone("Asia/Kolkata")).date()
-
-        future_expiries = []
-        for exp in expiries:
-            try:
-                exp_date = datetime.strptime(exp, "%d-%b-%Y").date()
-                if exp_date >= today:
-                    future_expiries.append(exp)
-            except:
-                continue
-
-        future_expiries.sort(key=lambda x: datetime.strptime(x, "%d-%b-%Y"))
-        return future_expiries[:count]
-    except Exception as e:
-        logger.error(f"Failed to fetch expiries for {index}: {e}")
-        return []
-
-# ===== FETCH OPTION CHAIN =====
-def fetch_option_chain():
-    session = create_session()
-    sleep(2)
-
-    all_expiries = {}
-    for cfg in SHEET_CONFIG:
-        idx = cfg["index"]
-        if idx not in all_expiries:
-            all_expiries[idx] = get_expiries(session, idx, 5)
-
-    sheet_dfs = {}
-    for cfg in SHEET_CONFIG:
-        index = cfg["index"]
-        expiry_idx = cfg["expiry_index"]
-        sheet = cfg["sheet_name"]
-
-        if not all_expiries[index]:
-            logger.warning(f"No expiries found for {index}")
+        data, expiries = fetch_nse_data(symbol)
+        if not data or not expiries:
+            logger.warning(f"No data for {symbol}")
             continue
 
-        target_expiry = all_expiries[index][expiry_idx if expiry_idx < len(all_expiries[index]) else 0]
-
-        url = OPTION_CHAIN_URL.format(index=index)
-        try:
-            resp = session.get(url, timeout=15)
-            data = resp.json()
-        except Exception as e:
-            logger.error(f"Failed to fetch {index}: {e}")
-            continue
+        target_expiry = expiries[exp_idx] if exp_idx < len(expiries) else expiries[0]
+        logger.info(f"{sheet_name} → Using expiry: {target_expiry}")
 
         rows = []
-        for item in data["records"]["data"]:
+        for item in data:
             if item.get("expiryDate") != target_expiry:
                 continue
             strike = item["strikePrice"]
@@ -155,80 +109,51 @@ def fetch_option_chain():
             pe = item.get("PE", {})
 
             rows.append({
+                "Strike": int(strike),
                 "CE OI": ce.get("openInterest", 0),
                 "CE Chng OI": ce.get("changeinOpenInterest", 0),
-                "CE Volume": ce.get("totalTradedVolume", 0),
+                "CE Vol": ce.get("totalTradedVolume", 0),
                 "CE LTP": ce.get("lastPrice", 0),
-                "Strike Price": strike,
-                "Expiry": target_expiry,
                 "PE LTP": pe.get("lastPrice", 0),
-                "PE Volume": pe.get("totalTradedVolume", 0),
+                "PE Vol": pe.get("totalTradedVolume", 0),
                 "PE Chng OI": pe.get("changeinOpenInterest", 0),
                 "PE OI": pe.get("openInterest", 0),
             })
 
         if rows:
-            df = pd.DataFrame(rows)
-            df = df.sort_values("Strike Price").reset_index(drop=True)
-            sheet_dfs[sheet] = df
-            logger.info(f"{sheet} → {len(df)} strikes | Expiry: {target_expiry}")
-        else:
-            logger.warning(f"No data for {sheet} ({index} - {target_expiry})")
+            df = pd.DataFrame(rows).sort_values("Strike").reset_index(drop=True)
+            all_dfs[sheet_name] = df
+            logger.info(f"Fetched {len(df)} strikes → {sheet_name} | Expiry: {target_expiry}")
 
-    return sheet_dfs
+    # Upload to Google Sheets
+    if all_dfs:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
+        client = gspread.authorize(creds)
+        sh = client.open_by_key(SHEET_ID)
 
-# ===== GOOGLE SHEETS =====
-def update_google_sheet(dfs):
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
-    client = gspread.authorize(creds)
-    sh = client.open_by_key(SHEET_ID)
+        for name, df in all_dfs.items():
+            try:
+                if name not in [ws.title for ws in sh.worksheets()]:
+                    sh.add_worksheet(title=name, rows=1000, cols=20)
+                ws = sh.worksheet(name)
+                ws.clear()
+                ws.update("A1", [df.columns.tolist()] + df.values.tolist())
+                logger.info(f"Uploaded {name} → {len(df.shape)} rows | {datetime.now(pytz.timezone('Asia/Kolkata'))}")
+            except Exception as e:
+                logger.error(f"Failed {name}: {e}")
 
-    for sheet_name, df in dfs.items():
-        try:
-            if sheet_name not in [ws.title for ws in sh.worksheets()]:
-                sh.add_worksheet(title=sheet_name, rows=1000, cols=20)
-
-            ws = sh.worksheet(sheet_name)
-            ws.clear()
-            ws.update('A1', [df.columns.tolist()] + df.values.tolist())
-            logger.info(f"Updated '{sheet_name}' → {len(df)} rows @ {datetime.now(pytz.timezone('Asia/Kolkata'))}")
-        except Exception as e:
-            logger.error(f"Failed to update {sheet_name}: {e}")
-
-# ===== MARKET HOURS =====
-def is_market_open():
-    ist = pytz.timezone("Asia/Kolkata")
-    now = datetime.now(ist)
-    t = now.time()
-    d = now.date()
-
-    if d.weekday() >= 5:  # Sat/Sun
-        return False
-    return dtime(9, 15) <= t <= dtime(15, 30)
-
-# ===== MAIN =====
 if __name__ == "__main__":
-    logger.info("NSE Option Chain → Google Sheets Updater Started")
-    session = None
+    logger.info("Live NSE Option Chain → Google Sheets | Working Dec 2025")
     while True:
-        try:
-            if is_market_open():
-                logger.info("Market open – fetching data...")
-                dfs = fetch_option_chain()
-                if dfs:
-                    update_google_sheet(dfs)
-                else:
-                    logger.warning("No data fetched this cycle")
-            else:
-                logger.info("Market closed – waiting...")
+        ist_now = datetime.now(pytz.timezone("Asia/Kolkata"))
+        is_trading_day = ist_now.weekday() < 5
+        is_trading_hours = dtime(9, 15) <= ist_now.time() <= dtime(15, 30)
 
-            logger.info(f"Sleeping {POLLING_INTERVAL_SECONDS}s...\n")
-            sleep(POLLING_INTERVAL_SECONDS)
+        if is_trading_day and is_trading_hours:
+            logger.info("Market OPEN → Fetching live data...")
+            update_sheets()
+        else:
+            logger.info(f"Market closed or pre-open → Next check in {POLLING_INTERVAL}s")
 
-        except KeyboardInterrupt:
-            logger.info("Stopped by user")
-            break
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            sleep(POLLING_INTERVAL_SECONDS)
+        time.sleep(POLLING_INTERVAL)
