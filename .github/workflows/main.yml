@@ -33,11 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install lxml
-          python -m pip install --upgrade pip
-          pip install requests pandas gspread oauth2client urllib3 pytz
-          pip install nselib gspread oauth2client pandas pytz nsepython
+          pip install --no-cache-dir -r requirements.txt
 
       - name: Set up Google credentials
         run: |
