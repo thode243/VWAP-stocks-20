@@ -7,7 +7,9 @@ import pandas as pd
 import gspread
 from datetime import datetime, time as dtime
 from oauth2client.service_account import ServiceAccountCredentials
-from nsepython import nse_optionchain  # Correct import for NSE data (works in Dec 2025)
+# from nsepython import nse_optionchain  # Correct import for NSE data (works in Dec 2025)
+from nsepython import option_chain
+
 
 # ========================= CONFIG ========================
 SHEET_ID = os.getenv("SHEET_ID")
