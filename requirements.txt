@@ -1,12 +1,6 @@
 pandas
-beautifulsoup4
 gspread
 oauth2client
-requests
-lxml
 pytz
-streamlit
-plotly
 nselib
-nsepython
-
+requests
