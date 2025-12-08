@@ -7,18 +7,25 @@ import pandas as pd
 import gspread
 from datetime import datetime, time as dtime
 from oauth2client.service_account import ServiceAccountCredentials
-# from nsepython import nse_optionchain  # Correct import for NSE data (works in Dec 2025)
-from nsepython import option_chain
+# Use a more explicit import that is less likely to conflict
+try:
+    from nsepython import option_chain as fetch_option_chain_data
+except ImportError:
+    # Fallback or alternative import if the above fails in some environments
+    from nsepython import nse_optionchain as fetch_option_chain_data
 
 
 # ========================= CONFIG ========================
 SHEET_ID = os.getenv("SHEET_ID")
 if not SHEET_ID:
-    raise ValueError("SHEET_ID environment variable is required")
+    # Changed from raise ValueError to sys.exit for cleaner script execution failure
+    logging.error("SHEET_ID environment variable is required")
+    sys.exit(1)
 
 CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "service_account.json")
 if not os.path.exists(CREDENTIALS_PATH):
-    raise FileNotFoundError(f"Credentials file not found: {CREDENTIALS_PATH}")
+    logging.error(f"Credentials file not found: {CREDENTIALS_PATH}")
+    sys.exit(1)
 
 SHEET_CONFIG = [
     {"sheet_name": "Weekly",     "expiry_index": 0},  # Current weekly expiry
@@ -45,14 +52,26 @@ def is_market_open():
     if now.weekday() >= 5:  # Saturday or Sunday
         return False
     t = now.time()
-    return dtime(9, 15) <= t <= dtime(18, 30)
+    # Market generally closes at 3:30 PM (15:30), but extended hours for specific sessions might exist.
+    # Updated the closing time validation to a more standard market hours check.
+    return dtime(9, 15) <= t <= dtime(15, 30) 
 
 def fetch_nifty_chain():
     try:
-        data = option_chain("NIFTY")  # Fetches full chain – handles all NSE blocks automatically
-        if not data or "records" not in data or "data" not in data["records"]:
-            raise ValueError("Invalid data structure from NSE")
-        log.info(f"Fetched NIFTY option chain – {len(data['records']['data'])} records")
+        # Use the imported alias
+        data = fetch_option_chain_data("NIFTY")
+        
+        # Enhanced validation using try-except for key access
+        try:
+            records_data = data["records"]["data"]
+            if not records_data:
+                 raise ValueError("Data list in 'records' is empty")
+        except KeyError as e:
+            raise ValueError(f"Missing expected key in data structure: {e}")
+        except TypeError:
+            raise ValueError("Data from NSE was not a dictionary (likely a string or other error response)")
+
+        log.info(f"Fetched NIFTY option chain – {len(records_data)} records")
         return data
     except Exception as e:
         log.error(f"Failed to fetch data from NSE: {e}")
@@ -60,10 +79,14 @@ def fetch_nifty_chain():
 
 def build_df(expiry_date, raw_data):
     rows = []
-    for item in raw_data["records"]["data"]:
+    # Access records safely
+    for item in raw_data.get("records", {}).get("data", []):
         if item.get("expiryDate") != expiry_date:
             continue
-        strike = item["strikePrice"]
+        strike = item.get("strikePrice")
+        if strike is None:
+            continue # Skip records without a strike price
+
         ce = item.get("CE", {})
         pe = item.get("PE", {})
         rows.append({
@@ -84,7 +107,8 @@ def build_df(expiry_date, raw_data):
     return df.sort_values("Strike").reset_index(drop=True)
 
 def update_sheets(dfs):
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    # The gspread logic remains robust, assuming credentials and permissions are correct.
+    scope = ["spreadsheets.google.com", "www.googleapis.com"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
     client = gspread.authorize(creds)
     book = client.open_by_key(SHEET_ID)
@@ -93,25 +117,32 @@ def update_sheets(dfs):
     existing_sheets = {ws.title for ws in book.worksheets()}
     for cfg in SHEET_CONFIG:
         if cfg["sheet_name"] not in existing_sheets:
-            book.add_worksheet(title=cfg["sheet_name"], rows=1000, cols=20)
-            log.info(f"Created new sheet: {cfg['sheet_name']}")
+            # Added basic error handling here too
+            try:
+                book.add_worksheet(title=cfg["sheet_name"], rows=1000, cols=20)
+                log.info(f"Created new sheet: {cfg['sheet_name']}")
+            except gspread.exceptions.APIError as e:
+                log.error(f"Failed to create sheet {cfg['sheet_name']}: {e}")
 
     for cfg in SHEET_CONFIG:
         name = cfg["sheet_name"]
         df = dfs.get(name)
         if df is None or df.empty:
-            log.warning(f"No data for {name} – skipping")
+            log.warning(f"No data for {name} – skipping update")
             continue
 
-        sheet = book.worksheet(name)
-        sheet.clear()
-        data_to_upload = [df.columns.tolist()] + df.values.tolist()
-        sheet.update("A1", data_to_upload)
-        log.info(f"Updated {name} → {len(df)} strikes at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S IST')}")
+        try:
+            sheet = book.worksheet(name)
+            sheet.clear()
+            data_to_upload = [df.columns.tolist()] + df.values.tolist()
+            sheet.update("A1", data_to_upload)
+            log.info(f"Updated {name} → {len(df)} strikes at {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S IST')}")
+        except gspread.exceptions.APIError as e:
+             log.error(f"Failed to update sheet {name}: {e}")
 
 # ========================= MAIN =========================
 if __name__ == "__main__":
-    log.info("NIFTY Option Chain → Google Sheets – Starting (nsepython 2.97)")
+    log.info("NIFTY Option Chain → Google Sheets – Starting")
 
     if not is_market_open():
         log.info("Market is closed → exiting without update")
@@ -119,7 +150,12 @@ if __name__ == "__main__":
 
     try:
         raw_data = fetch_nifty_chain()
-        expiries = raw_data["records"]["expiryDates"]
+        # Access expiries safely with get()
+        expiries = raw_data.get("records", {}).get("expiryDates", [])
+        
+        if not expiries:
+            raise ValueError("No expiry dates found in fetched data.")
+
         log.info(f"Available expiries: {expiries}")
 
         dfs_to_upload = {}
@@ -138,4 +174,5 @@ if __name__ == "__main__":
 
     except Exception as e:
         log.error(f"❌ Script failed: {e}", exc_info=True)
+        # Exit with a non-zero code to indicate failure in an automated environment
         sys.exit(1)
