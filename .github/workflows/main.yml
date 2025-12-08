@@ -37,6 +37,7 @@ jobs:
           pip install lxml
           python -m pip install --upgrade pip
           pip install requests pandas gspread oauth2client urllib3 pytz
+          pip install nselib gspread oauth2client pandas pytz nsepython
 
       - name: Set up Google credentials
         run: |
