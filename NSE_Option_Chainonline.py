@@ -9,7 +9,7 @@ from datetime import datetime, time as dtime
 from oauth2client.service_account import ServiceAccountCredentials
 from nsepython import nse_optionchain  # Correct import for NSE data (works in Dec 2025)
 
-# ========================= CONFIG =========================
+# ========================= CONFIG ========================
 SHEET_ID = os.getenv("SHEET_ID")
 if not SHEET_ID:
     raise ValueError("SHEET_ID environment variable is required")
