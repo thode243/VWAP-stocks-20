@@ -10,7 +10,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from nselib.derivatives import get_option_chain
 
 
-# ========= CONFIG =========
+# ========= CONFIG ========
 SHEET_ID = os.getenv("SHEET_ID")
 CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH")
 POLLING_INTERVAL_SECONDS = int(os.getenv("POLLING_INTERVAL", 30))
