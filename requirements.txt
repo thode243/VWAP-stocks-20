@@ -1,4 +1,4 @@
-unofficed==0.3.8
+nsepython==1.2.0
 pandas==2.2.2
 gspread==6.1.2
 oauth2client==4.1.3
