@@ -42,7 +42,7 @@ def is_market_open():
     d = now.date()
     if d.weekday() >= 5:  # Sat/Sun
         return False
-    return dtime(9, 15) <= t <= dtime(15, 30)
+    return dtime(9, 15) <= t <= dtime(18, 30)
 
 def get_nifty_option_chain():
     try:
