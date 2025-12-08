@@ -30,10 +30,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
+          pip install --no-cache-dir --upgrade pip
+          pip install --no-cache-dir nselib==1.4.0
+          pip install --no-cache-dir pandas gspread oauth2client pytz requests pandas_market_calendars
+
+        
 
       - name: Set up Google credentials
         run: |
