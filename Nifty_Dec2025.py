@@ -1,35 +1,37 @@
-# File: nse_option_chain_live_working_dec2025.py
-
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import time
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, time as dtime
 import pytz
 import os
 
-# ========================= CONFIG =========================
+# ===== CONFIG =====
 SHEET_ID = "17YLthNpsymBOeDkBbRkb3eC8A3KZnKTXz4cSAGScx88"
-CREDENTIALS_PATH = r"C:\Users\user\Desktop\GoogleSheetsUpdater\online-fetching-71bca82ecbf5.json"  # Add .json !!
+CREDENTIALS_PATH = r"C:\Users\user\Desktop\GoogleSheetsUpdater\online-fetching-71bca82ecbf5.json"  # Ensure .json extension!
 
 SHEET_CONFIG = [
-    {"sheet": "Sheet1", "symbol": "NIFTY",     "expiry_index": 0},   # Today/This Week → 09-Dec-2025
-    {"sheet": "Sheet2", "symbol": "NIFTY",     "expiry_index": 1},   # Next Week
-    {"sheet": "Sheet3", "symbol": "NIFTY",     "expiry_index": 2},   # Monthly
-    {"sheet": "Sheet4", "symbol": "NIFTY",     "expiry_index": 3},   # Next Monthly
-    {"sheet": "Sheet5", "symbol": "BANKNIFTY", "expiry_index": 0},
+    {"sheet_name": "Sheet1", "index": "NIFTY", "expiry_index": 0},  # Closest expiry (e.g., 09-Dec-2025 if active)
+    {"sheet_name": "Sheet2", "index": "NIFTY", "expiry_index": 1},
+    {"sheet_name": "Sheet3", "index": "NIFTY", "expiry_index": 2},
+    {"sheet_name": "Sheet4", "index": "NIFTY", "expiry_index": 3},
+    {"sheet_name": "Sheet5", "index": "BANKNIFTY", "expiry_index": 0},
 ]
 
-POLLING_INTERVAL = 30
-# =========================================================
+POLLING_INTERVAL_SECONDS = 30
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s")
-logger = logging.getLogger()
+# Logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
 
-def get_driver():
+def create_driver():
+    """Create stealthy Chrome driver."""
     options = uc.ChromeOptions()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
@@ -38,122 +40,151 @@ def get_driver():
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-plugins")
-    driver = uc.Chrome(options=options, version_main=131)  # Force latest Chrome
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": "Object.defineProperty(navigator, 'webdriver', {get: () => false})"
-    })
+    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+    driver = uc.Chrome(options=options, version_main=131)  # Match your Chrome version
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     return driver
 
-def fetch_nse_data(symbol="NIFTY"):
-    driver = get_driver()
+def fetch_option_chain_data(index="NIFTY"):
+    """Fetch option chain via stealth browser."""
+    driver = create_driver()
     try:
         driver.get("https://www.nseindia.com/option-chain")
-        time.sleep(6)
+        time.sleep(6)  # Wait for load
 
-        # Select Index
-        driver.execute_script(f"""
-            document.querySelector('#underlyingSelect').value = '{symbol}';
-            document.querySelector('#underlyingSelect').dispatchEvent(new Event('change'));
-        """)
+        # Select index
+        dropdown = WebDriverWait(driver, 20).until(EC.element_to_be_clickable((By.ID, "underlyingSelect")))
+        dropdown.click()
+        option = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, f"//option[contains(text(), '{index}')]")))
+        option.click()
         time.sleep(3)
 
-        # Get all expiry dates
-        expiries = driver.execute_script("""
-            return Array.from(document.querySelectorAll('#expirySelect option'))
-                 .map(opt => opt.textContent.trim());
-        """)
+        # Get expiry dates
+        expiry_select = driver.find_element(By.ID, "expirySelect")
+        expiries = [opt.text.strip() for opt in expiry_select.find_elements(By.TAG_NAME, "option") if opt.text.strip()]
+        logger.info(f"Expiries for {index}: {expiries[:4]}")  # e.g., includes 09-Dec-2025
 
-        # Trigger data load
-        driver.execute_script("getOptionChainData();")
+        # Load data
+        view_btn = driver.find_element(By.ID, "viewOC")
+        view_btn.click()
         time.sleep(5)
 
-        # Extract full JSON from page
-        data = driver.execute_script("return window.optionChainData || null;")
+        # Extract JSON
+        data = driver.execute_script("return window.optionChainData;")
         if not data:
-            # Fallback: extract from page source
-            page = driver.page_source
-            start = page.find('{"records"')
-            end = page.find('}];', start) + 2
-            raw = page[start:end]
-            data = json.loads(raw)
+            # Fallback to page source parsing
+            page_source = driver.page_source
+            start_idx = page_source.find('{"records"')
+            end_idx = page_source.find('}];', start_idx) + 2
+            json_str = page_source[start_idx:end_idx]
+            data = json.loads(json_str)
 
-        return data["records"]["data"], expiries
+        return data.get("records", {}).get("data", []), expiries
 
     except Exception as e:
-        logger.error(f"Error fetching {symbol}: {e}")
+        logger.error(f"Fetch error for {index}: {e}")
         return [], []
     finally:
         driver.quit()
 
-def update_sheets():
-    all_dfs = {}
-    for config in SHEET_CONFIG:
-        symbol = config["symbol"]
-        sheet_name = config["sheet"]
-        exp_idx = config["expiry_index"]
+def process_data_to_dfs():
+    """Process fetched data into DataFrames per sheet."""
+    sheet_dfs = {}
+    unique_indices = list(set(cfg["index"] for cfg in SHEET_CONFIG))
 
-        data, expiries = fetch_nse_data(symbol)
+    for index in unique_indices:
+        data, expiries = fetch_option_chain_data(index)
         if not data or not expiries:
-            logger.warning(f"No data for {symbol}")
+            logger.warning(f"No data/expiries for {index}")
             continue
 
-        target_expiry = expiries[exp_idx] if exp_idx < len(expiries) else expiries[0]
-        logger.info(f"{sheet_name} → Using expiry: {target_expiry}")
+        # Get target expiry per config
+        for cfg in [c for c in SHEET_CONFIG if c["index"] == index]:
+            expiry_idx = cfg["expiry_index"] if cfg["expiry_index"] is not None else 0
+            target_expiry = expiries[expiry_idx] if expiry_idx < len(expiries) else expiries[0]
+            sheet_name = cfg["sheet_name"]
 
-        rows = []
-        for item in data:
-            if item.get("expiryDate") != target_expiry:
-                continue
-            strike = item["strikePrice"]
-            ce = item.get("CE", {})
-            pe = item.get("PE", {})
+            rows = []
+            for entry in data:
+                if entry.get("expiryDate") != target_expiry:
+                    continue
+                strike = entry.get("strikePrice")
+                ce = entry.get("CE", {})
+                pe = entry.get("PE", {})
 
-            rows.append({
-                "Strike": int(strike),
-                "CE OI": ce.get("openInterest", 0),
-                "CE Chng OI": ce.get("changeinOpenInterest", 0),
-                "CE Vol": ce.get("totalTradedVolume", 0),
-                "CE LTP": ce.get("lastPrice", 0),
-                "PE LTP": pe.get("lastPrice", 0),
-                "PE Vol": pe.get("totalTradedVolume", 0),
-                "PE Chng OI": pe.get("changeinOpenInterest", 0),
-                "PE OI": pe.get("openInterest", 0),
-            })
+                rows.append({
+                    "CE OI": ce.get("openInterest", 0),
+                    "CE Chng OI": ce.get("changeinOpenInterest", 0),
+                    "CE LTP": ce.get("lastPrice", 0),
+                    "CE Volume": ce.get("totalTradedVolume", 0),
+                    "Strike Price": strike,
+                    "Expiry Date": target_expiry,
+                    "PE LTP": pe.get("lastPrice", 0),
+                    "PE Volume": pe.get("totalTradedVolume", 0),
+                    "PE Chng OI": pe.get("changeinOpenInterest", 0),
+                    "PE OI": pe.get("openInterest", 0),
+                })
 
-        if rows:
-            df = pd.DataFrame(rows).sort_values("Strike").reset_index(drop=True)
-            all_dfs[sheet_name] = df
-            logger.info(f"Fetched {len(df)} strikes → {sheet_name} | Expiry: {target_expiry}")
+            if rows:
+                df = pd.DataFrame(rows).sort_values("Strike Price").reset_index(drop=True)
+                sheet_dfs[sheet_name] = df
+                logger.info(f"{sheet_name}: {len(df)} strikes for {target_expiry}")
 
-    # Upload to Google Sheets
-    if all_dfs:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
-        client = gspread.authorize(creds)
-        sh = client.open_by_key(SHEET_ID)
+    return sheet_dfs
 
-        for name, df in all_dfs.items():
-            try:
-                if name not in [ws.title for ws in sh.worksheets()]:
-                    sh.add_worksheet(title=name, rows=1000, cols=20)
-                ws = sh.worksheet(name)
-                ws.clear()
-                ws.update("A1", [df.columns.tolist()] + df.values.tolist())
-                logger.info(f"Uploaded {name} → {len(df.shape)} rows | {datetime.now(pytz.timezone('Asia/Kolkata'))}")
-            except Exception as e:
-                logger.error(f"Failed {name}: {e}")
+def update_google_sheet(dfs):
+    """Update sheets."""
+    if not dfs:
+        logger.warning("No data to upload")
+        return
 
+    if not os.path.exists(CREDENTIALS_PATH):
+        raise FileNotFoundError(f"Credentials not found: {CREDENTIALS_PATH}")
+
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
+    client = gspread.authorize(creds)
+    spreadsheet = client.open_by_key(SHEET_ID)
+
+    # Add missing sheets
+    existing_sheets = {ws.title for ws in spreadsheet.worksheets()}
+    for cfg in SHEET_CONFIG:
+        if cfg["sheet_name"] not in existing_sheets:
+            spreadsheet.add_worksheet(title=cfg["sheet_name"], rows=1000, cols=15)
+
+    # Update each
+    for sheet_name, df in dfs.items():
+        if df.empty:
+            continue
+        ws = spreadsheet.worksheet(sheet_name)
+        ws.clear()
+        data = [df.columns.tolist()] + df.values.tolist()
+        ws.update("A1", data)
+        logger.info(f"Updated {sheet_name} with {len(df)} rows @ {datetime.now(pytz.timezone('Asia/Kolkata'))}")
+
+def is_market_open():
+    """Check IST market hours."""
+    ist = pytz.timezone("Asia/Kolkata")
+    now = datetime.now(ist)
+    market_start = dtime(9, 15)
+    market_end = dtime(15, 30)
+    return now.weekday() < 5 and market_start <= now.time() <= market_end
+
+# ===== MAIN LOOP =====
 if __name__ == "__main__":
-    logger.info("Live NSE Option Chain → Google Sheets | Working Dec 2025")
+    logger.info("NSE Option Chain Updater (Stealth Mode) – Working Dec 2025")
     while True:
-        ist_now = datetime.now(pytz.timezone("Asia/Kolkata"))
-        is_trading_day = ist_now.weekday() < 5
-        is_trading_hours = dtime(9, 15) <= ist_now.time() <= dtime(15, 30)
-
-        if is_trading_day and is_trading_hours:
-            logger.info("Market OPEN → Fetching live data...")
-            update_sheets()
-        else:
-            logger.info(f"Market closed or pre-open → Next check in {POLLING_INTERVAL}s")
-
-        time.sleep(POLLING_INTERVAL)
+        try:
+            if is_market_open():
+                logger.info("Market open – Fetching...")
+                dfs = process_data_to_dfs()
+                update_google_sheet(dfs)
+            else:
+                logger.info("Market closed – Skipping...")
+            time.sleep(POLLING_INTERVAL_SECONDS)
+        except KeyboardInterrupt:
+            logger.info("Stopped by user")
+            break
+        except Exception as e:
+            logger.error(f"Loop error: {e}")
+            time.sleep(POLLING_INTERVAL_SECONDS)
