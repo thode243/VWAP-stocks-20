@@ -18,10 +18,10 @@ from nsepython import nse_optionchain  # NEW: Handles all NSE blocks
 SHEET_ID = os.getenv("SHEET_ID", "17YLthNpsymBOeDkBbRkb3eC8A3KZnKTXz4cSAGScx88")
 SHEET_CONFIG = [
     {"sheet_name": "Sheet1", "index": "NIFTY", "expiry_index": 0},  # First expiry
-    {"sheet_name": "Sheet2", "index": "NIFTY", "expiry_index": 1},  # Second expiry
-    {"sheet_name": "Sheet3", "index": "NIFTY", "expiry_index": 2},  # Third expiry
-    {"sheet_name": "Sheet4", "index": "NIFTY", "expiry_index": 3},  # Fourth expiry
-    {"sheet_name": "Sheet5", "index": "BANKNIFTY", "expiry_index": None},
+    #{"sheet_name": "Sheet2", "index": "NIFTY", "expiry_index": 1},  # Second expiry
+    #{"sheet_name": "Sheet3", "index": "NIFTY", "expiry_index": 2},  # Third expiry
+    #{"sheet_name": "Sheet4", "index": "NIFTY", "expiry_index": 3},  # Fourth expiry
+    #{"sheet_name": "Sheet5", "index": "BANKNIFTY", "expiry_index": None},
     # {"sheet_name": "Sheet6", "index": "MIDCPNIFTY", "expiry_index": None},
     # {"sheet_name": "Sheet7", "index": "FINNIFTY", "expiry_index": None},
 ]
