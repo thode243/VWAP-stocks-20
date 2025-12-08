@@ -49,7 +49,7 @@ def is_market_open():
 
 def fetch_nifty_chain():
     try:
-        data = nse_optionchain("NIFTY")  # Fetches full chain – handles all NSE blocks automatically
+        data = option_chain("NIFTY")  # Fetches full chain – handles all NSE blocks automatically
         if not data or "records" not in data or "data" not in data["records"]:
             raise ValueError("Invalid data structure from NSE")
         log.info(f"Fetched NIFTY option chain – {len(data['records']['data'])} records")
