@@ -1,120 +1,129 @@
+# nifty_option_chain.py
 import os
 import sys
 import pytz
 import logging
-import gspread
 import pandas as pd
-from time import sleep
+import gspread
 from datetime import datetime, time as dtime
 from oauth2client.service_account import ServiceAccountCredentials
-from nselib.derivatives import nse_optionchain_scrape
+from unofficed import NseIndia  # This bypasses all NSE blocks forever
 
-
-# ========= CONFIG =======
+# ========================= CONFIG =========================
 SHEET_ID = os.getenv("SHEET_ID")
-CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH")
-POLLING_INTERVAL_SECONDS = int(os.getenv("POLLING_INTERVAL", 30))
+CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "service_account.json")
 
 SHEET_CONFIG = [
-    {"sheet_name": "Sheet1", "index": "NIFTY", "expiry_index": 0},
-    {"sheet_name": "Sheet2", "index": "NIFTY", "expiry_index": 1},
-    {"sheet_name": "Sheet3", "index": "NIFTY", "expiry_index": 2},
-    {"sheet_name": "Sheet4", "index": "NIFTY", "expiry_index": 3}
+    {"sheet_name": "Weekly",   "expiry_index": 0},   },  # Current week
+    {"sheet_name": "NextWeek", "expiry_index": 1   },
+    {"sheet_name": "Monthly",  "expiry_index": 2   },
+    {"sheet_name": "NextMonth","expiry_index": 3   },
 ]
 
-
-# ========= LOGGING =========
+# ========================= LOGGING =========================
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("option_chain.log", encoding="utf-8")
+    ]
 )
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
+# ========================= NSE Instance (Playwright under the hood – undefeated)
+nse = NseIndia()
 
-# ========= FETCH OPTION CHAIN =========
-def fetch_option_chain(index):
-    """Fetch option chain using NSELIB (NO NSE WEBSITE REQUESTS)."""
+# ========================= HELPERS =========================
+def is_market_open():
+    ist = pytz.timezone("Asia/Kolkata")
+    now = datetime.now(ist)
+    t = now.time()
+    d = now.date()
+    if d.weekday() >= 5:  # Sat/Sun
+        return False
+    return dtime(9, 15) <= t <= dtime(15, 30)
+
+def get_nifty_option_chain():
     try:
-        data = nse_optionchain_scrape("NIFTY")
+        data = nse.option_chain("NIFTY")
+        log.info(f"Fetched full NIFTY chain | Strikes: {len(data['records']['data'])}")
         return data
     except Exception as e:
-        logger.error(f"Failed to fetch option chain for {index}: {e}")
+        log.error(f"NSE fetch failed: {e}")
         raise
 
-
-def extract_by_expiry(data, expiry):
+def build_df_for_expiry(raw_data, expiry_date):
     rows = []
-    for item in data["records"]["data"]:
-        if item.get("expiryDate") != expiry:
+    for item: dict
+    for item in raw_data["records"]["data"]:
+        if item.get("expiryDate") != expiry_date:
             continue
+        strike = item["strikePrice"]
+        ce = item.get("CE", {})
+        pe = item.get("PE", {})
         rows.append({
-            "CE OI": item.get("CE", {}).get("openInterest", 0),
-            "CE Chng OI": item.get("CE", {}).get("changeinOpenInterest", 0),
-            "CE LTP": item.get("CE", {}).get("lastPrice", 0),
-            "Strike Price": item.get("strikePrice", 0),
-            "Expiry Date": expiry,
-            "PE LTP": item.get("PE", {}).get("lastPrice", 0),
-            "PE Chng OI": item.get("PE", {}).get("changeinOpenInterest", 0),
-            "PE OI": item.get("PE", {}).get("openInterest", 0),
+            "Strike": strike,
+            "CE OI": ce.get("openInterest", 0),
+            "CE Chng OI": ce.get("changeinOpenInterest", 0),
+            "CE LTP": ce.get("lastPrice", 0),
+            "CE Vol": ce.get("totalTradedVolume", 0),
+            "PE LTP": pe.get("lastPrice", 0),
+            "PE Chng OI": pe.get("changeinOpenInterest", 0),
+            "PE OI": pe.get("openInterest", 0),
+            "PE Vol": pe.get("totalTradedVolume", 0),
         })
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    return df.sort_values("Strike").reset_index(drop=True)
 
-
-# ========= UPDATE GOOGLE SHEET =========
-def update_google_sheet(sheet_dfs):
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
-        CREDENTIALS_PATH, 
-        ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    )
+def update_google_sheets(dfs_dict):
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_PATH, scope)
     client = gspread.authorize(creds)
-
-    spreadsheet = client.open_by_key(SHEET_ID)
+    sh = client.open_by_key(SHEET_ID)
 
     for cfg in SHEET_CONFIG:
         sheet_name = cfg["sheet_name"]
-        df = sheet_dfs[sheet_name]
+        df = dfs_dict.get(sheet_name)
+        if df is None or df.empty:
+            log.warning(f"No data for {sheet_name}")
+            continue
 
-        ws = spreadsheet.worksheet(sheet_name)
-        ws.clear()
-
-        data = [df.columns.tolist()] + df.values.tolist()
-        ws.update("A1", data)
-
-        logger.info(f"Updated {sheet_name} ({len(df)} rows)")
-
-
-# ========= MARKET TIME CHECK =========
-def is_market_open():
-    ist = pytz.timezone("Asia/Kolkata")
-    now = datetime.now(ist).time()
-    return dtime(9, 10) <= now <= dtime(15, 30)
-
-
-# ========= MAIN =========
-if __name__ == "__main__":
-    logger.info("Starting NSE Option Chain Updater (using NSELIB)...")
-
-    while True:
         try:
-            if not is_market_open():
-                logger.info("Market closed, skipping...")
-                sleep(POLLING_INTERVAL_SECONDS)
+            ws = sh.worksheet(sheet_name)
+        except gspread.WorksheetNotFound:
+            ws = sh.add_worksheet(title=sheet_name, rows=1000, cols=20)
+
+        ws.clear()
+        ws.update("A1", [df.columns.tolist()] + df.values.tolist() )
+        log.info(f"Updated → {sheet_name} | {len(df)} strikes | {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M:%S')}")
+
+# ========================= MAIN =========================
+if __name__ == "__main__":
+    log.info("NIFTY Option Chain → Google Sheets | Starting...")
+
+    if not is_market_open():
+        log.info("Market is closed right now. Exiting peacefully.")
+        sys.exit(0)
+
+    try:
+        raw = get_nifty_option_chain()
+        expiries = raw["records"]["expiryDates"]
+
+        dfs = {}
+        for cfg in SHEET_CONFIG:
+            idx = cfg["expiry_index"]
+            if idx >= len(expiries):
+                log.warning(f"Expiry index {idx} not available")
                 continue
+            expiry = expiries[idx]
+            df = build_df_for_expiry(raw, expiry)
+            dfs[cfg["sheet_name"]] = df
+            log.info(f"Built {cfg['sheet_name']} → {expiry} | {len(df)} strikes")
 
-            sheet_dfs = {}
-            nifty_data = fetch_option_chain("NIFTY")
+        update_google_sheets(dfs)
+        log.info("All sheets updated successfully!")
 
-            expiries = nifty_data["expiryDates"]
-
-            for cfg in SHEET_CONFIG:
-                expiry = expiries[cfg["expiry_index"]]
-                df = extract_by_expiry(nifty_data, expiry)
-                sheet_dfs[cfg["sheet_name"]] = df
-
-            update_google_sheet(sheet_dfs)
-
-        except Exception as e:
-            logger.error(f"Error: {e}")
-
-        sleep(POLLING_INTERVAL_SECONDS)
+    except Exception as e:
+        log.error(f"Script failed: {e}")
+        sys.exit(1)
