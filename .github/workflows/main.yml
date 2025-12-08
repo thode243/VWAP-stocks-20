@@ -2,28 +2,34 @@ name: Nifty Option Chain Update
 
 on:
   schedule:
-    - cron: '*/2 3-12 * * 1-5'   # Every 2 minutes during market hours (IST)
+    - cron: '*/2 3-9 * * 1-5'   # Every 2 minutes during market hours (IST: 9:15 AM - 3:30 PM)
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    concurrency:
+      group: nifty-live-update
+      cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt --no-cache-dir
+        shell: bash
 
       - name: Save Google credentials
         run: |
           echo '${{ secrets.GOOGLE_CREDENTIALS }}' > service_account.json
+          test -s service_account.json || exit 1  # Ensure it's not empty
 
       - name: Run script
         env:
@@ -31,9 +37,9 @@ jobs:
           GOOGLE_CREDENTIALS_PATH: ${{ github.workspace }}/service_account.json
         run: python NSE_Option_Chainonline.py
 
-      - name: Upload log
+      - name: Upload logs (for debugging)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: logs
+          name: nifty-logs
           path: option_chain.log
