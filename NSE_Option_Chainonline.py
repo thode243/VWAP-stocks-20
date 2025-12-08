@@ -13,7 +13,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 
-# ===== CONFIG =====
+# ===== CONFIG ====
 SHEET_ID = os.getenv(
     "SHEET_ID",
     "17YLthNpsymBOeDkBbRkb3eC8A3KZnKTXz4cSAGScx88"
@@ -279,7 +279,7 @@ def is_market_open():
     ist = pytz.timezone("Asia/Kolkata")
     now = datetime.now(ist)
     start = dtime(9, 10)
-    end = dtime(17, 35)
+    end = dtime(15, 00)
     return now.weekday() < 5 and start <= now.time() <= end
 
 
