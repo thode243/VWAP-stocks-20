@@ -15,7 +15,7 @@ except ImportError:
     from nsepython import nse_optionchain as fetch_option_chain_data
 
 
-# ========================= CONFIG ========================
+# ========================= CONFIG =======================
 SHEET_ID = os.getenv("SHEET_ID")
 if not SHEET_ID:
     # Changed from raise ValueError to sys.exit for cleaner script execution failure
