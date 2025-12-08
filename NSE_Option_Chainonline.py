@@ -54,7 +54,7 @@ def is_market_open():
     t = now.time()
     # Market generally closes at 3:30 PM (15:30), but extended hours for specific sessions might exist.
     # Updated the closing time validation to a more standard market hours check.
-    return dtime(9, 15) <= t <= dtime(15, 30) 
+    return dtime(9, 15) <= t <= dtime(18, 30) 
 
 def fetch_nifty_chain():
     try:
