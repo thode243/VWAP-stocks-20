@@ -20,10 +20,10 @@ if not os.path.exists(CREDENTIALS_PATH):
     raise FileNotFoundError(f"Google creds missing: {CREDENTIALS_PATH}")
 
 SHEET_CONFIG = [
-    {"sheet_name": "Weekly",     "expiry_index": 0},
-    {"sheet_name": "NextWeek",   "expiry_index": 1},
-    {"sheet_name": "Monthly",    "expiry_index": 2},
-    {"sheet_name": "NextMonth",  "expiry_index": 3},
+    {"sheet_name": "Sheet1,     "expiry_index": 0},
+    {"sheet_name": "Sheet2",   "expiry_index": 1},
+    {"sheet_name": "Sheet3",    "expiry_index": 2},
+    {"sheet_name": "Sheet4",  "expiry_index": 3},
 ]
 
 # ========================= LOGGING =========================
