@@ -2,7 +2,7 @@ name: Nifty Option Chain Update
 
 on:
   schedule:
-    - cron: '*/2 3-12 * * 1-5'   # Every 2 minutes during market hours (IST: 9:15 AM - 3:30 PM)
+    - cron: '*/2 3-12 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -11,6 +11,7 @@ jobs:
     concurrency:
       group: nifty-live-update
       cancel-in-progress: true
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,12 +25,15 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt --no-cache-dir
-        shell: bash
+
+      - name: Install Playwright browser
+        run: |
+          playwright install chromium
 
       - name: Save Google credentials
         run: |
           echo '${{ secrets.GOOGLE_CREDENTIALS }}' > service_account.json
-          test -s service_account.json || exit 1  # Ensure it's not empty
+          test -s service_account.json || exit 1
 
       - name: Run script
         env:
