@@ -10,7 +10,7 @@ from datetime import datetime, time as dtime
 from oauth2client.service_account import ServiceAccountCredentials
 from playwright.sync_api import sync_playwright  # Simulates real browser to bypass blocks
 
-# ========================= CONFIG ==================
+# ========================= CONFIG =================
 SHEET_ID = os.getenv("SHEET_ID")
 if not SHEET_ID:
     raise ValueError("SHEET_ID env var required")
